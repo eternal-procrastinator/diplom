@@ -1,4 +1,4 @@
-// Построение каталога гравитационных моделей для различных астероидов
+// Building a catalog of gravity models for different asteroids
 
 #include <iostream>
 #include <ctime>
@@ -128,8 +128,6 @@ public:
 
 };
 
-
-
 //class ellipsoid {
 //    double a_, b_, c_;
 //public:
@@ -158,7 +156,7 @@ double sgn(double n){
 }
 
 state_type mult_mat(const state_type& A, const state_type& B){
-    assert(A[0].size() != B.size());
+    assert(A[0].size() == B.size());
     state_type C(A.size());
     for (auto& str:C)
         str.resize(B[0].size());
@@ -189,42 +187,94 @@ state_type matrix_rot(int elem_i, int elem_j, int dim, double theta){
                 A[i][j] = 1;
             else A[i][j] = 0;
     A[elem_i][elem_i] = A[elem_j][elem_j] = cos(theta);
-    A[elem_j][elem_i] = -A[elem_i][elem_j] = -sin(theta);
+    A[elem_j][elem_i] = sin(theta);
+    A[elem_i][elem_j] = -1*A[elem_j][elem_i];
+    return A;
 };
 
 class tensor{
     state_type matrix;
+//public:
     void rot_m(state_type& m){
+        m.resize(matrix.size());
+        for (auto& mat:m)
+            mat.resize(matrix.size());
+        state_type m_new(m.size());
+        for (auto& mat:m_new)
+            mat.resize(m.size());
+        for (int i=0;i<matrix.size();i++)
+            for (int j=0;j<matrix.size();j++)
+                if (i == j)
+                    m[i][j] = 1;
+                else
+                    m[i][j] = 0;
         double eps = numeric_limits<double>::epsilon();
-        double t_m = t_diag = 1;
-        double tau,t,c,s;
+        double t_m = 1, t_diag = 1;
+        double theta, i_max, j_max, max_el;
+        int count_it = 0;
         while (t_m/t_diag > eps){
-            double max_el=0, i_max, j_max;
+            max_el=0;
             t_m = t_diag = 0;
-            for (int i=0;i<m.size();i++)
-                for (int j=0;j<m.size();j++)
+            for (int i=0;i<matrix.size();i++)
+                for (int j=0;j<matrix.size();j++)
                     if (i != j){
-                        if (abs(m[i][j]) > max_el){
-                            max_el = abs(m[i][j]);
+                        if (abs(matrix[i][j]) > max_el){
+                            max_el = abs(matrix[i][j]);
                             i_max = i;
                             j_max = j;
                         }
-                        t_m += m[i][j];
+                        t_m += matrix[i][j]*matrix[i][j];
                     }
                     else
-                        t_diag += m[i][j];
-            if (m[i_max][i_max] == m[j_max][j_max])
+                        t_diag += matrix[i][j]*matrix[i][j];
+            if (matrix[i_max][i_max] == matrix[j_max][j_max])
                 theta = PI/4;
-            else {
-                tau = (a(j,j)-a(k,k)/2/a(j,k)
-                t = sign(tau)/(|tau|+sqrt(1+tau^2))
-                c = 1/sqrt(1+t^2)
-                s = ct
-            }
-
+            else
+                theta = atan2(matrix[i_max][j_max], matrix[i_max][i_max] - matrix[j_max][j_max]);
+            m_new = matrix_rot(i_max, j_max, m.size(), theta);
+            m = mult_mat(m, m_new);
+            matrix = mult_mat(mult_mat(transpose_mat(m_new), matrix), m_new);
+//            cout << "ok" << endl;
+//            for (int j=0;j<3;j++){
+//                for (int i=0;i<3;i++)
+//                    cout << m[i][j] << " ";
+//                cout << endl;
+//            }
+//            cout << endl;
+//            for (int j=0;j<3;j++){
+//                for (int i=0;i<3;i++)
+//                    cout << m_new[i][j] << " ";
+//                cout << endl;
+//            }
+            count_it++;
         }
+
+        cout << count_it << endl;
+
+        m = transpose_mat(m);
+
+        std::ofstream vect_in_new;
+        vect_in_new.open("vect_in_new.dat",std::ios_base::out);
+        for (int j=0;j<3;j++){
+            vect_in_new << 0 << " " << 0 << " " << 0;
+            for (int i=0;i<3;i++)
+                vect_in_new << " " << matrix[i][j]/pow(10,13)*900;
+            vect_in_new << endl;
+        }
+        vect_in_new.close();
+
+        std::ofstream vect_in;
+        vect_in.open("vect_in.dat",std::ios_base::out);
+        for (int j=0;j<3;j++){
+            vect_in << 0 << " " << 0 << " " << 0;
+            for (int i=0;i<3;i++)
+                vect_in << " " << m[i][j]*300;
+            vect_in << endl;
+        }
+        vect_in.close();
     }
 public:
+//    tensor():matrix{{1,-2,3},{-2,1,-2},{3,-2,1}}{}
     tensor(const vector<m_point>& mps): matrix(3) {
         for (auto& ten:matrix)
             ten.resize(3);
@@ -236,9 +286,17 @@ public:
             matrix[0][2] = matrix[2][0] -= mp.coord[0] * mp.coord[2];
             matrix[1][2] = matrix[2][1] -= mp.coord[1] * mp.coord[2];
         }
-        for (auto& ten:matrix)
-            for (auto& elem:ten)
+        std::ofstream vect_in_old;
+        vect_in_old.open("vect_in_old.dat",std::ios_base::out);
+        for (auto& ten:matrix){
+            vect_in_old << 0 << " " << 0 << " " << 0;
+            for (auto& elem:ten){
                 elem *= mps.size();
+                vect_in_old << " " << elem/pow(10,13)*900;
+            }
+            vect_in_old << endl;
+        }
+        vect_in_old.close();
     }
 
     void transform(vector<m_point>& mps){
@@ -251,7 +309,7 @@ public:
             for (int i=0;i<3;i++){
                 mp.coord[i] = 0;
                 for (int j=0;j<3;j++)
-                    mp.coord[i] += m[i][j] * copy_mp[j];
+                    mp.coord[i] += m[i][j] * copy_mp.coord[j];
             }
         }
     }
@@ -279,51 +337,39 @@ double inv_alpha(double n, double k){
     return mult/(2-kron_delta(0,k));
 }
 
-//double fact(int N)
-//{
-//    if(N < 0)
-//        return 0;
-//    if (N == 0)
-//        return 1;
-//    else
-//        return N * fact(N - 1);
-//}
-
-//double det_max (double a, double b, double c) {
-//    double d;
-//    d = a;
-//    if (a < b) {
-//        d = b;
-//        if (b < c) {
-//            d = c;
-//        }
-//    } else if (a < c) {
-//        d = c;
-//    }
-//    return d;
-//}
-
-//double funy(double x, double a, double b){
-//    double d;
-//    d = sqrt(b*b - b*b/(a*a)*x*x);
-//    return d;
-//}
-//
-//double funz(double x, double y, double a, double b, double c){
-//    double e;
-//    e = sqrt(c*c - (c*c/(a*a)*x*x + c*c/(b*b)*y*y));
-//    return e;
-//}
-
 int main(){
     double x, y, z, h, sum_pot=0, r;
     int n, num_coef;
 
-//    cout << Leg_pol(10,0,0.6) << endl;
+//    state_type A_mat{{1,2,3},{2,1,3},{2,3,1}}, B_mat{{1,1,1},{2,2,2},{3,3,3}};
+//    state_type C_mat = mult_mat(A_mat,B_mat);
+//    state_type D_mat = transpose_mat(B_mat);
+//    state_type E_mat = matrix_rot(2, 3, 5, PI/3);
+//    for (int i=0;i<3;i++){
+//        for (int j=0;j<3;j++)
+//            cout << C_mat[i][j] << " ";
+//        cout << endl;
+//    }
+//    for (int i=0;i<3;i++){
+//        for (int j=0;j<3;j++)
+//            cout << D_mat[i][j] << " ";
+//        cout << endl;
+//    }
+//    for (int i=0;i<5;i++){
+//        for (int j=0;j<5;j++)
+//            cout << E_mat[i][j] << " ";
+//        cout << endl;
+//    }
 //    exit(0);
 
+//    tensor t{};
+//    state_type matr;
+//    t.rot_m(matr);
+//    exit(0);
+
+
 //    vecd gradU(3);
-    std::ofstream out, res, graph, file_coef;
+    std::ofstream out_old_coord, out_new_coord, res, graph, file_coef;
     std::ifstream file_in, aster_data;
 
     file_in.open("file_in.dat",std::ios_base::in);
@@ -331,7 +377,8 @@ int main(){
     file_in >> n >> num_coef;
     file_in.close();
 
-    out.open("out.dat",std::ios_base::out);
+    out_old_coord.open("out_old_coord.dat",std::ios_base::out);
+    out_new_coord.open("out_new_coord.dat",std::ios_base::out);
 
 //    vector<ellipsoid> ell_body{};
 
@@ -387,6 +434,12 @@ int main(){
         }
     }
 
+    for (auto& p:disc_body){
+        for (int i=0;i<3;i++)
+            out_old_coord << p.coord[i] << " ";
+        out_old_coord << endl;
+    }
+
     vecd center_m(3);
     for (auto& p:disc_body){
         for (int i=0;i<3;i++){
@@ -398,12 +451,19 @@ int main(){
     for (auto& p:disc_body){
         for (int i=0;i<3;i++){
             p.coord[i] -= center_m[i];
-            out << p.coord[i] << " ";
+//            out << p.coord[i] << " ";
         }
-        out << endl;
+//        out << endl;
     }
 
+    tensor t{disc_body};
+    t.transform(disc_body);
 
+    for (auto& p:disc_body){
+        for (int i=0;i<3;i++)
+            out_new_coord << p.coord[i] << " ";
+        out_new_coord << endl;
+    }
 
     state_type A(num_coef), B(num_coef);
     file_coef.open("file_coef.dat",std::ios_base::out);
@@ -422,6 +482,7 @@ int main(){
             file_coef << i << " " << j << " " << A[i][j] << " " << B[i][j] << endl;
             cout << A[i][j] << " " << B[i][j] << " ";
         }
+        file_coef << endl;
         cout << endl;
     }
     file_coef.close();
@@ -456,29 +517,8 @@ int main(){
     }
     res << "theta= " << 0 << " lambda= " << 0 << " sum_pot= " << sum_pot << endl;
 
-//    while (l.is_inside(x,y,z))
-//        while (l.is_inside(x,y,z)){
-//            while (l.is_inside(x,y,z)) {
-//                out << x << " " << y << " " << z << endl;
-//                x+=h;
-//            }
-//            y+=h;
-//        }
-//        z+=h;
-//    }
-
-//    for (x=-m; x<=m; x+=h) {
-//        for (y=-m; y<=m; y+=h) {
-//            for (z=-m; z<=m; z+=h) {
-//                if (any_of(ell_body.begin(),ell_body.end(),[=](ellipsoid ell){return ell.is_inside(x,y,z);})) {
-//                out << x << " " << y << " " << z << endl;
-//                disc_body.emplace_back(m_point(x,y,z));
-//                }
-//            }
-//        }
-//    }
-
-    out.close();
+    out_old_coord.close();
+    out_new_coord.close();
     res.close();
     graph.close();
 
